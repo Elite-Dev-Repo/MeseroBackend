@@ -10,7 +10,7 @@ from django.db import models
 from rest_framework import generics
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 
@@ -33,6 +33,7 @@ class CreateRestaurantView(generics.CreateAPIView):
 class RestaurantRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = RestaurantDetailSerializer
     permission_classes = [IsAuthenticated, IsOwnerOrStaffOnly]
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
     lookup_field = "slug"
 
     def get_queryset(self):

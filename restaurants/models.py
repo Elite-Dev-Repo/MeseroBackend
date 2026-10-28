@@ -11,18 +11,21 @@ class Restaurant(models.Model):
     name = models.CharField(max_length=200)
     slug = models.SlugField(unique=True, primary_key=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="restaurants")
+    description = models.TextField(blank=True, default="")
+    address = models.CharField(max_length=255, blank=True, default="")
+    phone = models.CharField(max_length=32, blank=True, default="")
+    email = models.EmailField(blank=True, default="")
     logo = CloudinaryField("/mesero/logo/", blank=True, null=True)
+    cover = CloudinaryField("/mesero/cover/", blank=True, null=True)
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            base_slug = slugify(self.name)
+            base_slug = slugify(self.name) or uuid.uuid4().hex[:12]
             slug = base_slug
-            counter = 1
-                # Check if slug already exists in the DB, append a suffix if it does
+            # Check if slug already exists in the DB, append a suffix if it does
             while Restaurant.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                slug = f"{base_slug}-{uuid.uuid4().hex[:6]}" # or use a counter
-                counter += 1
-                self.slug = slug
+                slug = f"{base_slug}-{uuid.uuid4().hex[:6]}"
+            self.slug = slug
         super().save(*args, **kwargs)
 
 

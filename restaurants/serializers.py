@@ -7,21 +7,31 @@ from users.serializers import UserSerializer
 User = get_user_model()
 
 
+class CloudinaryImageField(serializers.ImageField):
+    def to_representation(self, value):
+        if not value:
+            return None
+        return value.url
+
+
 class RestaurantSerializer(serializers.ModelSerializer):
-    logo = serializers.SerializerMethodField()
+    logo = CloudinaryImageField(required=False, allow_null=True)
+    cover = CloudinaryImageField(required=False, allow_null=True)
+
     class Meta:
         model = Restaurant
-        fields = [ "owner","name", "slug", "logo"]
-        extra_kwargs = {"slug": {"read_only": True}}
-
-    
-    
-    def get_logo(self, obj):
-        if obj.logo:
-            logo = obj.logo.url
-            return logo
-        else:
-            return None
+        fields = [
+            "owner",
+            "name",
+            "slug",
+            "description",
+            "address",
+            "phone",
+            "email",
+            "logo",
+            "cover",
+        ]
+        read_only_fields = ["owner", "slug"]
 
 
 class StaffSerializer(serializers.ModelSerializer):
@@ -92,25 +102,36 @@ class InventorySerializer(serializers.ModelSerializer):
 
 class RestaurantDetailSerializer(serializers.ModelSerializer):
     owner = UserSerializer(read_only=True)
-    logo = serializers.SerializerMethodField()
+    logo = CloudinaryImageField(required=False, allow_null=True)
+    cover = CloudinaryImageField(required=False, allow_null=True)
     restaurant_inventory = InventorySerializer(many=True, read_only=True)
     menu_categories = CategorySerializer(many=True, read_only=True)
     staff_for_restaurant = StaffSerializer(many=True, read_only=True)
     staff_count = serializers.SerializerMethodField()
+    menu_categories_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Restaurant
-        fields = [ "owner","name", "slug", "logo", "restaurant_inventory", "menu_categories", "staff_for_restaurant", "staff_count"]
-        extra_kwargs = {"slug": {"read_only": True}}
+        fields = [
+            "owner",
+            "name",
+            "slug",
+            "description",
+            "address",
+            "phone",
+            "email",
+            "logo",
+            "cover",
+            "restaurant_inventory",
+            "menu_categories",
+            "staff_for_restaurant",
+            "staff_count",
+            "menu_categories_count",
+        ]
+        read_only_fields = ["owner", "slug"]
 
     def get_staff_count(self, obj):
         return obj.staff_for_restaurant.count()
 
-
-    
-    
-    def get_logo(self, obj):
-        if obj.logo:
-            logo = obj.logo.url
-            return logo
-        else:
-            return None
+    def get_menu_categories_count(self, obj):
+        return obj.menu_categories.count()

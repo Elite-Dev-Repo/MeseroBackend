@@ -43,16 +43,11 @@ class StaffSerializer(serializers.ModelSerializer):
 
 class MenuItemSerializer(serializers.ModelSerializer):
     category = serializers.PrimaryKeyRelatedField(queryset=Categories.objects.all())
-    image = serializers.SerializerMethodField()
+    image = CloudinaryImageField(required=False, allow_null=True)
 
     class Meta:
         model = MenuItem
         fields = ["id", "name", "category", "image", "price", "is_available", "description"]
-
-    def get_image(self, obj):
-        if obj.image:
-            return obj.image.url
-        return None
 
 class CategorySerializer(serializers.ModelSerializer):
     restaurant = serializers.PrimaryKeyRelatedField(read_only=True)

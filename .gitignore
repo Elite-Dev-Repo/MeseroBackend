@@ -1,0 +1,5 @@
+.env
+__pycache__
+.venv
+related_names.txt
+feature.txt

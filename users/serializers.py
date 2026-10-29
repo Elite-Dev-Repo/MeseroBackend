@@ -1,6 +1,11 @@
 
 from rest_framework import serializers
 from .models import User, OTPToken
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils.encoding import force_bytes, smart_str, smart_bytes, DjangoUnicodeDecodeError
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
 
 
@@ -65,4 +70,47 @@ class VerifyUserEmailSerializer(serializers.Serializer):
 class ResendOTPSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
-    
+    class Meta:
+            fields = ["email"]
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+   
+   
+    class Meta:
+        fields = ["email"]
+
+class ChangePasswordSerializer(serializers.Serializer):
+    uidbs4 = serializers.CharField(min_length=1)
+    token = serializers.CharField(min_length=1)
+    new_password = serializers.CharField(min_length=6, max_length=128, write_only=True)
+    confirm_password = serializers.CharField(min_length=6, max_length=128, write_only=True)
+
+    class Meta:
+        fields = ["uidbs4", "token", "new_password", "confirm_password"]
+
+    def validate(self, attrs):
+        uidbs4 = attrs.get("uidbs4")
+        token = attrs.get("token")
+        new_password = attrs.get("new_password")
+        confirm_password = attrs.get("confirm_password")
+
+        try:
+            uid = urlsafe_base64_decode(uidbs4).decode()
+            user = User.objects.get(id=uid)
+        except (TypeError, ValueError, OverflowError, DjangoUnicodeDecodeError, User.DoesNotExist):
+            raise serializers.ValidationError({"token": "Invalid or expired password reset link."})
+
+        if not PasswordResetTokenGenerator().check_token(user, token):
+            raise serializers.ValidationError({"token": "Invalid or expired password reset link."})
+
+        if new_password != confirm_password:
+            raise serializers.ValidationError({"confirm_password": "Passwords do not match."})
+
+        try:
+            validate_password(new_password, user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"new_password": list(exc.messages)})
+
+        attrs["user"] = user
+        return attrs

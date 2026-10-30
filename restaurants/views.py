@@ -111,10 +111,23 @@ class MenuItemListCreateAPIView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        return MenuItem.objects.filter(
+        queryset = MenuItem.objects.filter(
             models.Q(category__restaurant__owner=user) | 
             models.Q(category__restaurant__staff_for_restaurant__user=user, category__restaurant__staff_for_restaurant__is_active=True)
-        ).distinct()
+        ).select_related("category").distinct()
+
+        category = self.request.query_params.get("category")
+        if category and category.isdigit():
+            queryset = queryset.filter(category_id=category)
+
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(
+                models.Q(name__icontains=search)
+                | models.Q(description__icontains=search)
+            )
+
+        return queryset
 
     def perform_create(self, serializer):
         category = serializer.validated_data["category"]
@@ -122,6 +135,50 @@ class MenuItemListCreateAPIView(generics.ListCreateAPIView):
         user = self.request.user
         if not (restaurant.owner == user or restaurant.staff_for_restaurant.filter(user=user, is_active=True).exists()):
             raise PermissionDenied("You can only add items to your own restaurant's categories.")
+        serializer.save()
+
+
+class CategoryDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return Categories.objects.filter(
+            models.Q(restaurant__owner=user)
+            | models.Q(
+                restaurant__staff_for_restaurant__user=user,
+                restaurant__staff_for_restaurant__is_active=True,
+            )
+        ).distinct()
+
+
+class MenuItemDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = MenuItemSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def get_queryset(self):
+        user = self.request.user
+        return MenuItem.objects.filter(
+            models.Q(category__restaurant__owner=user)
+            | models.Q(
+                category__restaurant__staff_for_restaurant__user=user,
+                category__restaurant__staff_for_restaurant__is_active=True,
+            )
+        ).distinct()
+
+    def perform_update(self, serializer):
+        category = serializer.validated_data.get("category", serializer.instance.category)
+        restaurant = category.restaurant
+        user = self.request.user
+        if not (
+            restaurant.owner == user
+            or restaurant.staff_for_restaurant.filter(user=user, is_active=True).exists()
+        ):
+            raise PermissionDenied(
+                "You can only move items to your own restaurant's categories."
+            )
         serializer.save()
 
 

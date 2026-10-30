@@ -43,11 +43,12 @@ class StaffSerializer(serializers.ModelSerializer):
 
 class MenuItemSerializer(serializers.ModelSerializer):
     category = serializers.PrimaryKeyRelatedField(queryset=Categories.objects.all())
+    category_name = serializers.CharField(source="category.name", read_only=True)
     image = CloudinaryImageField(required=False, allow_null=True)
 
     class Meta:
         model = MenuItem
-        fields = ["id", "name", "category", "image", "price", "is_available", "description"]
+        fields = ["id", "name", "category", "category_name", "image", "price", "is_available", "description"]
 
 class CategorySerializer(serializers.ModelSerializer):
     restaurant = serializers.PrimaryKeyRelatedField(read_only=True)

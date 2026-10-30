@@ -3,8 +3,8 @@ from restaurants.models import Staff
 from restaurants.permissions import IsOwnerOrStaffOnly
 from restaurants.serializers import RestaurantDetailSerializer
 from rest_framework.response import Response
-from django.shortcuts import render
-from .serializers import RestaurantSerializer, MenuItemSerializer, InventoryItemSerializer, CategorySerializer, InventorySerializer
+from django.shortcuts import get_object_or_404, render
+from .serializers import RestaurantSerializer, MenuItemSerializer, InventoryItemSerializer, CategorySerializer, InventorySerializer, StockAdjustmentSerializer
 from .models import Restaurant, MenuItem, InventoryItem, Categories, Inventory
 from django.db import models
 from rest_framework import generics
@@ -12,6 +12,17 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.exceptions import PermissionDenied, ValidationError
+
+
+def get_user_restaurant(user, slug):
+    return Restaurant.objects.filter(
+        models.Q(slug=slug, owner=user)
+        | models.Q(
+            slug=slug,
+            staff_for_restaurant__user=user,
+            staff_for_restaurant__is_active=True,
+        )
+    ).distinct().first()
 
 
 # Create your views here.
@@ -184,11 +195,110 @@ class MenuItemDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 
 
 
-class inventoryListCreateAPIView(generics.ListCreateAPIView):
-    queryset = Inventory.objects.select_related("menu_items").all()
+class InventoryListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = InventorySerializer
     permission_classes = [IsAuthenticated]
-    lookup_field = "slug"
+
+    def get_restaurant(self):
+        restaurant = get_user_restaurant(
+            self.request.user, self.kwargs.get("restaurant_slug")
+        )
+        if not restaurant:
+            raise PermissionDenied("You cannot manage inventory for this restaurant.")
+        return restaurant
+
+    def get_queryset(self):
+        return Inventory.objects.filter(
+            restaurant=self.get_restaurant()
+        ).prefetch_related("inventory_item")
+
+    def perform_create(self, serializer):
+        serializer.save(restaurant=self.get_restaurant())
+
+
+class InventoryDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = InventorySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return Inventory.objects.filter(
+            models.Q(restaurant__owner=user)
+            | models.Q(
+                restaurant__staff_for_restaurant__user=user,
+                restaurant__staff_for_restaurant__is_active=True,
+            )
+        ).distinct()
+
+
+class InventoryItemListCreateAPIView(generics.ListCreateAPIView):
+    serializer_class = InventoryItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_restaurant(self):
+        restaurant = get_user_restaurant(
+            self.request.user, self.kwargs.get("restaurant_slug")
+        )
+        if not restaurant:
+            raise PermissionDenied("You cannot manage inventory for this restaurant.")
+        return restaurant
+
+    def get_queryset(self):
+        return InventoryItem.objects.filter(
+            inventory__restaurant=self.get_restaurant()
+        ).select_related("inventory")
+
+    def perform_create(self, serializer):
+        restaurant = self.get_restaurant()
+        inventory = Inventory.objects.filter(restaurant=restaurant).first()
+        if not inventory:
+            inventory = Inventory.objects.create(
+                restaurant=restaurant, name="Main Inventory"
+            )
+        serializer.save(inventory=inventory)
+
+
+class InventoryItemDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = InventoryItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return InventoryItem.objects.filter(
+            models.Q(inventory__restaurant__owner=user)
+            | models.Q(
+                inventory__restaurant__staff_for_restaurant__user=user,
+                inventory__restaurant__staff_for_restaurant__is_active=True,
+            )
+        ).distinct()
+
+
+class InventoryItemAdjustAPIView(generics.GenericAPIView):
+    serializer_class = StockAdjustmentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return InventoryItem.objects.filter(
+            models.Q(inventory__restaurant__owner=user)
+            | models.Q(
+                inventory__restaurant__staff_for_restaurant__user=user,
+                inventory__restaurant__staff_for_restaurant__is_active=True,
+            )
+        ).distinct()
+
+    def post(self, request, pk):
+        item = get_object_or_404(self.get_queryset(), pk=pk)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_quantity = item.quantity + serializer.validated_data["delta"]
+        if new_quantity < 0:
+            raise ValidationError({"delta": "Stock cannot go below zero."})
+        item.quantity = new_quantity
+        item.save(update_fields=["quantity"])
+        return Response(
+            InventoryItemSerializer(item).data, status=status.HTTP_200_OK
+        )
 
 
 class StaffListAPIView(generics.ListAPIView):

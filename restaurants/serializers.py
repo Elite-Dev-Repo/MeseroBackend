@@ -85,6 +85,15 @@ class InventoryItemSerializer(serializers.ModelSerializer):
         return None
 
 
+class StockAdjustmentSerializer(serializers.Serializer):
+    delta = serializers.IntegerField()
+
+    def validate_delta(self, value):
+        if value == 0:
+            raise serializers.ValidationError("Adjustment cannot be zero.")
+        return value
+
+
 class InventorySerializer(serializers.ModelSerializer):
     restaurant = serializers.PrimaryKeyRelatedField(read_only=True)
     inventory_item = InventoryItemSerializer(many=True, read_only=True)

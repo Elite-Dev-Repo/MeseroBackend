@@ -1,4 +1,9 @@
-from restaurants.serializers import StaffSerializer
+from django.contrib.auth import get_user_model
+from restaurants.serializers import (
+    StaffInviteSerializer,
+    StaffSerializer,
+    StaffUpdateSerializer,
+)
 from restaurants.models import Staff
 from restaurants.permissions import IsOwnerOrStaffOnly
 from restaurants.serializers import RestaurantDetailSerializer
@@ -12,6 +17,9 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.views import APIView
+
+User = get_user_model()
 
 
 def get_user_restaurant(user, slug):
@@ -30,7 +38,7 @@ def get_user_restaurant(user, slug):
 
 class CreateRestaurantView(generics.CreateAPIView):
     queryset = Restaurant.objects.select_related("owner")
-    serializer_class = RestaurantSerializer
+    serializer_class = RestaurantDetailSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [FormParser, MultiPartParser]
 
@@ -61,6 +69,14 @@ class RestaurantRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView)
             raise PermissionDenied("you are not permitted to perform this action")
 
         return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        restaurant = self.get_object()
+
+        if request.user != restaurant.owner:
+            raise PermissionDenied("you are not permitted to perform this action")
+
+        return super().destroy(request, *args, **kwargs)
 
 class CategoryListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = CategorySerializer
@@ -126,6 +142,10 @@ class MenuItemListCreateAPIView(generics.ListCreateAPIView):
             models.Q(category__restaurant__owner=user) | 
             models.Q(category__restaurant__staff_for_restaurant__user=user, category__restaurant__staff_for_restaurant__is_active=True)
         ).select_related("category").distinct()
+
+        restaurant = self.request.query_params.get("restaurant")
+        if restaurant:
+            queryset = queryset.filter(category__restaurant__slug=restaurant)
 
         category = self.request.query_params.get("category")
         if category and category.isdigit():
@@ -306,6 +326,79 @@ class StaffListAPIView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsOwnerOrStaffOnly]
 
     def get_queryset(self):
-        restaurant_slug = self.kwargs.get("restaurant_slug")
-        restaurant = Restaurant.objects.get(slug=restaurant_slug)
-        return Staff.objects.filter(restaurant=restaurant).select_related("user", "restaurant").all()
+        restaurant = get_user_restaurant(
+            self.request.user, self.kwargs.get("restaurant_slug")
+        )
+        if not restaurant:
+            raise PermissionDenied("You cannot view staff for this restaurant.")
+        return Staff.objects.filter(restaurant=restaurant).select_related(
+            "user", "restaurant"
+        )
+
+
+class StaffInviteAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, restaurant_slug):
+        restaurant = get_user_restaurant(request.user, restaurant_slug)
+        if not restaurant:
+            raise PermissionDenied("You cannot manage staff for this restaurant.")
+        if restaurant.owner != request.user:
+            raise PermissionDenied("Only the restaurant owner can invite staff.")
+
+        serializer = StaffInviteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        user = User.objects.filter(email__iexact=email).first()
+        if not user:
+            return Response(
+                {"email": "No account found with that email address."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if Staff.objects.filter(user=user, restaurant=restaurant).exists():
+            return Response(
+                {"email": "This user is already a staff member."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        staff = Staff.objects.create(
+            user=user,
+            restaurant=restaurant,
+            role=serializer.validated_data["role"],
+            is_active=True,
+        )
+        return Response(StaffSerializer(staff).data, status=status.HTTP_201_CREATED)
+
+
+class StaffDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_staff(self, request, restaurant_slug, pk):
+        restaurant = get_user_restaurant(request.user, restaurant_slug)
+        if not restaurant:
+            raise PermissionDenied("You cannot manage staff for this restaurant.")
+        if restaurant.owner != request.user:
+            raise PermissionDenied("Only the restaurant owner can manage staff.")
+        staff = get_object_or_404(
+            Staff.objects.select_related("user", "restaurant"),
+            pk=pk,
+            restaurant=restaurant,
+        )
+        if staff.role == Staff.StaffRole.OWNER:
+            raise PermissionDenied("The owner's staff record cannot be changed.")
+        return staff
+
+    def patch(self, request, restaurant_slug, pk):
+        staff = self.get_staff(request, restaurant_slug, pk)
+        serializer = StaffUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        for field, value in serializer.validated_data.items():
+            setattr(staff, field, value)
+        staff.save(update_fields=list(serializer.validated_data.keys()))
+        return Response(StaffSerializer(staff).data, status=status.HTTP_200_OK)
+
+    def delete(self, request, restaurant_slug, pk):
+        staff = self.get_staff(request, restaurant_slug, pk)
+        staff.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -137,13 +137,6 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
-    'DEFAULT_THROTTLE_CLASSES': (
-        'rest_framework.throttling.ScopedRateThrottle',
-    ),
-    'DEFAULT_THROTTLE_RATES': {
-        'password_reset': '5/hour',
-    }
-  
 }
 
 
@@ -181,4 +174,4 @@ cloudinary.config(
 )
 
 
-CORS_ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.1:3000"]
+CORS_ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]

@@ -32,6 +32,9 @@ class ListCreateOrderAPIView(APIView):
 
     def get(self, request):
         orders = self.get_queryset(request.user)
+        restaurant = request.query_params.get("restaurant")
+        if restaurant:
+            orders = orders.filter(restaurant__slug=restaurant)
         serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

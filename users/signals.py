@@ -4,7 +4,7 @@ from django.db.models.signals import post_save
 from .models import User, OTPToken
 from django.utils import timezone
 from django.conf import settings
-import secrets
+import os
 
 
 @receiver(post_save, sender=User)
@@ -24,9 +24,10 @@ def send_verification_email(sender, instance, created, **kwargs):
         return
     subject = "Email Verification"
     recipient = [instance.user.email]
+    base_url = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
     body = f"""
     Hello {instance.user.first_name}, here is your email verification code {instance.token}.
-    Go to  www.x_link.com/verification/ to verify
+    Go to {base_url}/verify-email to verify your email.
     """
 
     send_mail(

@@ -69,16 +69,15 @@ class OTPToken(models.Model):
 
 
     def generate_token(self):
-        secret = secrets.token_hex(3).upper()
-        self.token = secret
+        self.token = f"{secrets.randbelow(1_000_000):06d}"
         self.expires = timezone.now() + timezone.timedelta(minutes=15)
 
 
 
     def save(self, *args, **kwargs):
-        if not self.token or self.expires:
+        if not self.token or not self.expires:
             self.generate_token()
-            super().save(*args, **kwargs)
+        super().save(*args, **kwargs)
     
 
     def __str__(self):

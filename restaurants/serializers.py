@@ -34,11 +34,45 @@ class RestaurantSerializer(serializers.ModelSerializer):
         read_only_fields = ["owner", "slug"]
 
 
+class StaffUserSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ["id", "email", "first_name", "last_name", "name"]
+
+    def get_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip() or obj.email.split("@")[0]
+
+
 class StaffSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+    user = StaffUserSerializer(read_only=True)
+    joined_at = serializers.DateTimeField(source="user.date_joined", read_only=True)
+
     class Meta:
         model = Staff
-        fields = ["user", "role", "restaurant", "is_active"]
+        fields = ["id", "user", "role", "restaurant", "is_active", "joined_at"]
+        read_only_fields = ["id", "user", "restaurant", "joined_at"]
+
+
+class StaffInviteSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(choices=Staff.StaffRole.choices)
+
+    def validate_role(self, value):
+        if value == Staff.StaffRole.OWNER:
+            raise serializers.ValidationError("The owner role cannot be assigned.")
+        return value
+
+
+class StaffUpdateSerializer(serializers.Serializer):
+    role = serializers.ChoiceField(choices=Staff.StaffRole.choices, required=False)
+    is_active = serializers.BooleanField(required=False)
+
+    def validate_role(self, value):
+        if value == Staff.StaffRole.OWNER:
+            raise serializers.ValidationError("The owner role cannot be assigned.")
+        return value
 
 
 class MenuItemSerializer(serializers.ModelSerializer):

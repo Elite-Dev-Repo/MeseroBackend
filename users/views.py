@@ -47,6 +47,7 @@ class VerifyUserEmailAPIView(APIView):
             user = otp.user
             user.is_active = True
             user.save()
+            OTPToken.objects.filter(user=user).delete()
             return Response({"success": "Email sucessfully verified."}, status=status.HTTP_200_OK) 
 
 
@@ -62,13 +63,13 @@ class ResendOTPForEmailVerification(APIView):
         user = User.objects.get(email=req_email)
         if user.is_active == True:
             return Response({"error": "User email already verified."}, status=status.HTTP_200_OK)
+        OTPToken.objects.filter(user=user).delete()
         OTPToken.objects.create(user=user)
         return Response({"success": "If an account with that email exists, an email will be sent to it."}, status=status.HTTP_200_OK)
 
 
 class RequestPasswordResetLinkAPIView(generics.GenericAPIView):
     serializer_class = PasswordResetRequestSerializer
-    throttle_scope = "password_reset"
     permission_classes = [AllowAny]
 
     def post(self, request):
